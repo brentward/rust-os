@@ -234,31 +234,35 @@ impl<T: io::Read + io::Write> Xmodem<T> {
             (self.progress)(Progress::Started);
             self.started = true;            
         }
-        let packet = self.packet;
         let first_byte = self.read_byte(true)?;
-        if first_byte == SOH {
-            self.expect_byte_or_cancel(packet, "Expecting packet number")?;
-            self.expect_byte_or_cancel(255 - packet, "Expect packet 1s compliment")?;
-            self.inner.read_exact(buf)?;
-            let checksum: u8 = buf.iter().fold(0, |acc, &x| acc.wrapping_add(x));
-            if checksum ==  self.read_byte(false)? {
-                self.write_byte(ACK)?;
-                self.packet = self.packet.wrapping_add(1);
-                (self.progress)(Progress::Packet(packet));
-            } else {
-                self.write_byte(NAK)?;
-                return Err(io::Error::new(io::ErrorKind::Interrupted, "Checksum is not valid"));
+        match first_byte {
+            SOH => {
+                let packet = self.packet;
+                self.expect_byte_or_cancel(packet, "Expecting packet number")?;
+                self.expect_byte_or_cancel(255 - packet, "Expect packet 1s compliment")?;
+                self.inner.read_exact(buf)?;
+                let checksum: u8 = buf.iter().fold(0, |acc, &x| acc.wrapping_add(x));
+                if checksum ==  self.read_byte(false)? {
+                    self.write_byte(ACK)?;
+                    self.packet = self.packet.wrapping_add(1);
+                    (self.progress)(Progress::Packet(packet));
+                    Ok(128)
+                } else {
+                    self.write_byte(NAK)?;
+                    Err(io::Error::new(io::ErrorKind::Interrupted, "Checksum is not valid"))
+                }
             }
-            } else if first_byte == EOT {
-            self.write_byte(NAK)?;
-            self.expect_byte(EOT, "Expect EOT")?;
-            self.write_byte(ACK)?;
-            return Ok(0)
-        } else {
-            self.write_byte(CAN)?;
-            return Err(io::Error::new(io::ErrorKind::InvalidData, "First packet received is not SOH or EOT"));
+            EOT => {
+                self.write_byte(NAK)?;
+                self.expect_byte(EOT, "Expect EOT")?;
+                self.write_byte(ACK)?;
+                Ok(0)
+            }
+            _ => {
+                self.write_byte(CAN)?;
+                Err(io::Error::new(io::ErrorKind::InvalidData, "First packet received is not SOH or EOT"))
+            }
         }
-        Ok(128)
     }
 
     /// Sends (uploads) a single packet to the inner stream using the XMODEM
@@ -301,7 +305,6 @@ impl<T: io::Read + io::Write> Xmodem<T> {
             self.started = true;
             (self.progress)(Progress::Started);
         }
-        let packet = self.packet;
         if buf.len() == 0 {
             self.write_byte(EOT)?;
             self.expect_byte(NAK, "Expected NAK after first EOT")?;
@@ -309,6 +312,8 @@ impl<T: io::Read + io::Write> Xmodem<T> {
             self.expect_byte(ACK, "Expected ACK after second EOT")?;
             Ok(0)
         } else {
+            let packet = self.packet;
+
             self.write_byte(SOH)?;
             self.write_byte(packet)?;
             self.write_byte(255 - packet)?;

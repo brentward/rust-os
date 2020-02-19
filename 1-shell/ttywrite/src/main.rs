@@ -53,6 +53,41 @@ fn main() {
 
     let opt = Opt::from_args();
     let mut serial = serial::open(&opt.tty_path).expect("path points to invalid TTY");
+    let mut settings = serial.read_settings().expect("unable to read settings from serial port");
+    settings.set_baud_rate(opt.baud_rate).expect("baud rate could not be set");
+    settings.set_char_size(opt.char_width);
+    settings.set_flow_control(opt.flow_control);
+    settings.set_stop_bits(opt.stop_bits);
+    serial.write_settings(&settings).expect("settings could not be applied");
+    serial.set_timeout(Duration::from_secs(opt.timeout)).expect("timeout could not be set");
+
+    let mut reader: Box<BufRead> = match opt.input {
+       Some(path) => {
+            let file = File::open(&path).expect("input file could not be opened");
+            let buf = BufReader::new(file);
+            Box::new(buf)
+        }
+       None => {
+           let stdin = io::stdin();
+           let buf = BufReader::new(stdin);
+           Box::new(buf)
+       }
+    };
+
+    let bytes = match opt.raw {
+        false => {
+            Xmodem::transmit_with_progress(reader, serial, progress_fn).expect("transmission failure")
+        }
+        true => {
+            io::copy(&mut reader, &mut serial).expect("raw send failed") as usize
+        }
+    };
+
+    println!("wrote {} bytes to input", bytes);
 
     // FIXME: Implement the `ttywrite` utility.
+}
+
+fn progress_fn(progress: Progress) {
+    println!("Progress: {:?}", progress);
 }

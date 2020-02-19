@@ -84,8 +84,6 @@ fn main() {
     };
 
     println!("Transfer complete: {} bytes sent", bytes);
-
-    // FIXME: Implement the `ttywrite` utility.
 }
 
 fn progress_fn(progress: Progress) {
@@ -94,7 +92,10 @@ fn progress_fn(progress: Progress) {
 
     match progress {
         Progress::Waiting => println!("Waiting for receiver to acknowledge transfer..."),
-        Progress::Started => println!("Starting transfer "),
+        Progress::Started => {
+            print!("Starting transfer: ");
+            io::stdout().flush().expect("stdout failed to flush");
+        }
         Progress::Packet(_) => {
             print!("📦");
             io::stdout().flush().expect("stdout failed to flush");

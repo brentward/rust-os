@@ -96,9 +96,8 @@ fn progress_fn(progress: Progress) {
         Progress::Waiting => println!("Waiting for receiver to acknowledge transfer..."),
         Progress::Started => println!("Starting transfer "),
         Progress::Packet(_) => {
-            print!(".");
+            print!("📦");
             io::stdout().flush().expect("stdout failed to flush");
         }
-    }
-    println!("Progress: {:?}", progress);
+    };
 }

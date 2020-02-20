@@ -92,18 +92,25 @@ pub mod shell;
 
 #[no_mangle]
 pub extern "C" fn kmain() {
-    pi::timer::spin_sleep_ms(5000);
+    // pi::timer::spin_sleep_ms(5000);
     let mut uart = MiniUart::new();
-    uart.write_str("This is the beginning\nand another line\nand another\n");
-
     loop {
-        // let byte = b'b';
-        let byte = uart.read_byte();
-        uart.write_str("hello foo\n");
-        uart.write_byte(byte);
-        // <MiniUart as OtherWrite>::write_str(&mut uart, "<-");
-        uart.write_str("<-\n").unwrap();
+        {
+
+            let byte = uart.read_byte();
+            console::kprintln!("Yo this you typed {}", byte as char);
+        }
     }
+    // uart.write_str("This is the beginning\nand another line\nand another\n");
+    //
+    // loop {
+    //     // let byte = b'b';
+    //     let byte = uart.read_byte();
+    //     uart.write_str("hello foo\n");
+    //     uart.write_byte(byte);
+    //     // <MiniUart as OtherWrite>::write_str(&mut uart, "<-");
+    //     uart.write_str("<-\n").unwrap();
+    // }
 
     // let mut interval = 150i64;
     // let max_interval = interval.clone();

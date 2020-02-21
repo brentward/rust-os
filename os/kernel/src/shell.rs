@@ -51,8 +51,25 @@ const DEL: u8 = 127;
 /// Starts a shell using `prefix` as the prefix for each line. This function
 /// never returns: it is perpetually in a shell loop.
 pub fn shell(prefix: &str) -> ! {
-    timer::spin_sleep_ms(5000);
-    kprintln!("Welcome to the shell!");
+    let init_msg = "Press any key to continue...";
+    kprint!("\r\n");
+    loop {
+        kprint!("{}", init_msg);
+        let mut console = CONSOLE.lock();
+        let byte = console.read_byte();
+        match byte {
+            byte if byte >= 32 && byte <= 127 => {
+                break;
+            },
+            _ => {
+                for _ in 0..init_msg.len() {
+                    console.write_byte(BACK);
+                }
+            }
+        }
+    }
+
+    kprintln!("\r\n\r\nWelcome to the shell!");
 
     loop {
         kprint!("{}", prefix);

@@ -69,7 +69,7 @@ pub fn shell(prefix: &str) -> ! {
         }
     }
 
-    kprintln!("\r\n\r\nWelcome to the shell!");
+    kprintln!("\r\n\r\nWelcome to the BrentWard Shell!");
 
     loop {
         kprint!("{}", prefix);

@@ -71,7 +71,7 @@ struct Registers {
     __r25: Reserved<u8>,
     __r26: Reserved<u8>,
     STAT: ReadVolatile<u32>,
-    BAUD: Volatile<u32>,
+    BAUD: Volatile<u16>,
 }
 
 /// The Raspberry Pi's "mini UART".
@@ -100,6 +100,7 @@ impl MiniUart {
         Gpio::new(14).into_alt(Function::Alt5);
         Gpio::new(15).into_alt(Function::Alt5);
         registers.CNTL.write(0b11);
+        registers.IIR.write(0b11 << 1);
 
         MiniUart {
             registers,

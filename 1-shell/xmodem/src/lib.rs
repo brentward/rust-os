@@ -178,7 +178,7 @@ impl<T: io::Read + io::Write> Xmodem<T> {
                 self.write_byte(CAN)?;
                 Err(e)
             }
-            x => x,
+            result => result,
         }
     }
 

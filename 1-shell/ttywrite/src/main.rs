@@ -83,7 +83,7 @@ fn main() {
         }
     };
 
-    println!("Transfer complete: {} bytes sent", bytes);
+    println!("\n\nTransfer complete: {} bytes sent", bytes);
 }
 
 fn progress_fn(progress: Progress) {

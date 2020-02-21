@@ -23,17 +23,6 @@ enum LsrStatus {
 #[repr(C)]
 #[allow(non_snake_case)]
 struct Registers {
-    // IO: Volatile<u32>, // IO read/write.
-    // IER: Volatile<u32>, // Interrupt enable.
-    // IIR: Volatile<u32>, // Interrupt status.
-    // LCR: Volatile<u32>, // Line data format control.
-    // MCR: Volatile<u32>, // Controls modem signals.
-    // LSR: Volatile<u32>, // Data status.
-    // MSR: ReadVolatile<u32>, // Modem status.
-    // SCRATCH: Reserved<u32>, // Scratch register, not used.
-    // CNTL: Volatile<u32>, // Control, provides access to additional features.
-    // STAT: ReadVolatile<u32>, // miniUART status.
-    // BAUD: Volatile<u32>, // Baud rate.
     IO: Volatile<u8>,
     __r0: Reserved<u8>,
     __r1: Reserved<u8>,

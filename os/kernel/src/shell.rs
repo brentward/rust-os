@@ -1,5 +1,7 @@
+use std;
 use stack_vec::StackVec;
 use console::{kprint, kprintln, CONSOLE};
+use pi::timer;
 
 /// Error type for `Command` parse failures.
 #[derive(Debug)]
@@ -36,12 +38,72 @@ impl<'a> Command<'a> {
 
     /// Returns this command's path. This is equivalent to the first argument.
     fn path(&self) -> &str {
-        unimplemented!()
+        self.args[0]
     }
 }
+
+const CR: u8 = b'\r';
+const LF: u8 = b'\n';
+const BELL: u8 = 7;
+const BACK: u8 = 8;
+const DEL: u8 = 127;
 
 /// Starts a shell using `prefix` as the prefix for each line. This function
 /// never returns: it is perpetually in a shell loop.
 pub fn shell(prefix: &str) -> ! {
-    unimplemented!()
+    timer::spin_sleep_ms(5000);
+    kprintln!("Welcome to the shell!");
+
+    loop {
+        kprint!("{}", prefix);
+        let mut input_buf = [0u8; 512];
+        let mut input = StackVec::new(&mut input_buf);
+        'read_char: loop {
+            let byte = CONSOLE.lock().read_byte();
+            match byte {
+                DEL | BACK => {
+                    if !input.is_empty() {
+                        input.pop();
+                        CONSOLE.lock().write_byte(BACK);
+                        kprint!(" ");
+                        CONSOLE.lock().write_byte(BACK);
+                    } else {
+                        CONSOLE.lock().write_byte(BELL);
+                    }
+                }
+                CR | LF => break 'read_char,
+                byte if byte < 32 || byte > 127 => CONSOLE.lock().write_byte(BELL),
+                byte => {
+                    if input.push(byte).is_ok() {
+                        CONSOLE.lock().write_byte(byte);
+                    } else {
+                        CONSOLE.lock().write_byte(BELL);
+                    }
+                }
+            }
+        }
+        kprintln!("");
+        let input_str = std::str::from_utf8(input.as_slice())
+            .expect("input bytes failed to cast back to string");
+        let mut args_buf = [""; 64];
+        match Command::parse(input_str, &mut args_buf) {
+            Ok(command) => {
+                match command.path() {
+                    "echo" => echo(&command.args),
+                    path => kprintln!("unknown command: {}", path)
+                }
+            } // TODO execute command
+            Err(Error::TooManyArgs) => {
+                kprintln!("error: too many arguments");
+            }
+            Err(Error::Empty) => (),
+        }
+    }
+}
+
+fn echo(args: &StackVec<&str>) {
+    for &arg in args[1..].iter() {
+        kprint!("{} ", arg);
+    }
+    kprint!("\r\n");
 }

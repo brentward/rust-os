@@ -27,8 +27,9 @@ impl Iterator for Atags {
         let current = self.ptr;
         match current.next() {
             Some(next_atag) => {
+                let result = Some(Atag::from(current));
                 self.ptr = next_atag;
-                Some(Atag::from(next_atag))
+                result
             },
             None => None,
         }

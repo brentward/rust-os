@@ -2,6 +2,7 @@ use std;
 use stack_vec::StackVec;
 use console::{kprint, kprintln, CONSOLE};
 use pi::timer;
+use pi::atags;
 
 /// Error type for `Command` parse failures.
 #[derive(Debug)]
@@ -50,7 +51,7 @@ const DEL: u8 = 127;
 
 /// Starts a shell using `prefix` as the prefix for each line. This function
 /// never returns: it is perpetually in a shell loop.
-pub fn shell(prefix: &str) -> ! {
+pub fn shell(prefix: &str) {
     let init_msg = "Press any key to continue...";
     kprint!("\r\n");
     loop {
@@ -107,6 +108,10 @@ pub fn shell(prefix: &str) -> ! {
             Ok(command) => {
                 match command.path() {
                     "echo" => echo(&command.args),
+                    "atags" => atag(&command.args),
+                    "panic" => panic!("You called panic"),
+                    "unreachable" => unreachable!(),
+                    "quit" => break,
                     path => kprintln!("unknown command: {}", path)
                 }
             } // TODO execute command
@@ -123,4 +128,53 @@ fn echo(args: &StackVec<&str>) {
         kprint!("{} ", arg);
     }
     kprint!("\r\n");
+}
+
+fn atag(args: &StackVec<&str>) {
+    let atags = atags::Atags::get();
+    if args.len() > 1 {
+        match args[1] {
+            "mem" => {
+                for atag in atags {
+                    match atag {
+                        atags::Atag::Mem(_) => kprintln!("{:#?}", atag),
+                        _ => (),
+                    }
+                }
+            }
+            "core" => {
+                for atag in atags.into_iter() {
+                    match atag {
+                        atags::Atag::Core(_) => kprintln!("{:#?}", atag),
+                        _ => (),
+                    }
+                }
+            }
+            "cmd" => {
+                for atag in atags.into_iter() {
+                    match atag {
+                        atags::Atag::Cmd(_) => kprintln!("{:#?}", atag),
+                        _ => (),
+                    }
+                }
+            }
+            "unknown" => {
+                for atag in atags.into_iter() {
+                    match atag {
+                        atags::Atag::Unknown(_) => kprintln!("{:#?}", atag),
+                        _ => (),
+                    }
+                }
+            }
+            _ => {
+                for atag in atags.into_iter() {
+                    kprintln!("{:#?}", atag);
+                }
+            }
+        }
+    } else {
+        for atag in atags.into_iter() {
+            kprintln!("{:#?}", atag);
+        }
+    }
 }

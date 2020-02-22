@@ -44,7 +44,9 @@ pub fn current_time() -> u64 {
 /// Spins until `us` microseconds have passed.
 pub fn spin_sleep_us(us: u64) {
     let end_time = current_time() + us;
-    while end_time > current_time() {};
+    while end_time > current_time() {
+        continue
+    };
 }
 
 /// Spins until `ms` milliseconds have passed.

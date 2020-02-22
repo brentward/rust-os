@@ -152,3 +152,10 @@ Temporary Items
 # Assignment 2 specific
 resources/
 files/
+
+# Jet Brains
+.idea
+
+# VS Code
+.vscode
+

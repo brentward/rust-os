@@ -40,6 +40,12 @@ pub static FILE_SYSTEM: FileSystem = FileSystem::uninitialized();
 #[no_mangle]
 #[cfg(not(test))]
 pub extern "C" fn kmain() {
-    shell::shell("> ");
     ALLOCATOR.initialize();
+    pi::timer::spin_sleep_ms(10000);
+    let mut v = vec![];
+    for i in 0..1000 {
+        v.push(i);
+    }
+    console::kprintln!("{:?}", v);
+    shell::shell("> ");
 }

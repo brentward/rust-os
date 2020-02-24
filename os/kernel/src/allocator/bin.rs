@@ -4,13 +4,6 @@ use alloc::heap::{AllocErr, Layout};
 use allocator::util::*;
 use allocator::linked_list::LinkedList;
 
-// const BLOCK_SIZES: &[usize; 10] = &[8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096];
-//
-// fn get_size_index(layout: &Layout) -> Option<usize> {
-//     let required_size = layout.size().max(layout.align());
-//     BLOCK_SIZES.iter().contains(|&size| required_size >= size)
-// }
-
 /// A simple allocator that allocates based on size classes.
 #[derive(Debug)]
 pub struct Allocator {
@@ -18,7 +11,6 @@ pub struct Allocator {
     end: usize,
     block_sizes: [usize; 10],
     sized_lists: [LinkedList; 10],
-    // default_allocator: LinkedList,
     // FIXME: Add the necessary fields.
 }
 
@@ -31,7 +23,6 @@ impl Allocator {
             end,
             block_sizes: [8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096],
             sized_lists: [LinkedList::new(); 10],
-            // default_allocator: LinkedList::new(),
         }
     }
 
@@ -45,25 +36,8 @@ impl Allocator {
             if !self.sized_lists[index + 1].is_empty() {
                 return self.sized_lists[index + 1].pop()
             }
-            // while self.sized_lists[index].is_empty() {
-            //     match get_addr_from_above(index + 1) {
-            //         Some ()
-            //     }
-            // }
-            // match self.sized_lists[index].pop() {
-            //     Some(addr) => {
-            //         let new_addr = unsafe { *addr as usize  + self.block_sizes[index - 1] };
-            //         let new_ptr = new_addr as *mut u8;
-            //         unsafe { self.sized_lists[index - 1].push(new_ptr as *mut usize) };
-            //         Some(addr)
-            //     },
-            //     None => self.get_addr_from_above(index + 1)
-            // }
-        // } else {
-        //     return None
         }
         None
-        // unimplemented!()
     }
 
     fn split_addr(addr: *mut usize, size: usize) -> (*mut usize, *mut usize) {
@@ -129,10 +103,6 @@ impl Allocator {
                 match self.sized_lists[index].pop() {
                     Some(addr) => Ok(addr as *mut u8),
                     None => {
-                        // let size = self.block_sizes[index];
-                        // let align = size;
-                        // let layout = Layout::from_size_align(size, align)
-                        //     .expect("New layout from size failed");
                         match self.populate_from_above(index) {
                             Some(_) => {
                                 match self.sized_lists[index].pop() {
@@ -141,7 +111,7 @@ impl Allocator {
                                 }
                             },
                             None => {
-                                let aligned_addr = align_up(self.current, layout.align());
+                                let aligned_addr = align_up(self.current, self.block_sizes[index]);
                                 if aligned_addr + self.block_sizes[index] > self.end {
                                     Err(AllocErr::Exhausted { request: layout })
                                 } else {
@@ -150,44 +120,17 @@ impl Allocator {
                                 }
                             }
                         }
-                        // let aligned_addr = align_up(self.current, layout.align());
-                        // if aligned_addr + self.block_sizes[index] > self.end {
-                        //     Err(AllocErr::Exhausted { request: layout })
-                        // } else {
-                        //     self.current = aligned_addr + self.block_sizes[index];
-                        //     Ok(aligned_addr as *mut u8)
-                        // }
-                    },
+                    }
                 }
             }
             None => {
                 let aligned_addr = align_up(self.current, layout.align());
-
                 if aligned_addr + layout.size() > self.end {
                     Err(AllocErr::Exhausted { request: layout })
                 } else {
                     self.current = aligned_addr + layout.size();
                     Ok(aligned_addr as *mut u8)
                 }
-
-                // match self.default_allocator.pop() {
-                //     Some(addr) => {
-                //
-                //     },
-                //     None => {
-                //         // let size = self.block_sizes[index];
-                //         // let align = size;
-                //         // let layout = Layout::from_size_align(size, align)
-                //         //     .expect("New layout from size failed");
-                //         let aligned_addr = align_up(self.current, layout.align());
-                //         if aligned_addr + layout.size() > self.end {
-                //             Err(AllocErr::Exhausted { request: layout })
-                //         } else {
-                //             self.current = aligned_addr + layout.size();
-                //             Ok(aligned_addr as *mut u8)
-                //         }
-                //     },
-                // }
             }
         }
     }
@@ -209,11 +152,9 @@ impl Allocator {
         match self.get_size_index(&layout) {
             Some(index) => unsafe {
                 self.sized_lists[index].push(ptr as *mut usize)
-            },
+            }
             None => (),
         }
-
-        // unimplemented!("bin deallocation")
     }
 }
 //

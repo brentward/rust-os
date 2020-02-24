@@ -41,11 +41,13 @@ pub static FILE_SYSTEM: FileSystem = FileSystem::uninitialized();
 #[cfg(not(test))]
 pub extern "C" fn kmain() {
     ALLOCATOR.initialize();
-    pi::timer::spin_sleep_ms(1500);
+    pi::timer::spin_sleep_ms(2500);
     let mut v = vec![];
     for i in 0..1000 {
         v.push(i);
     }
     console::kprintln!("{:?}", v);
     shell::shell("> ");
+    console::kprintln!{"{:?}", ALLOCATOR};
+
 }

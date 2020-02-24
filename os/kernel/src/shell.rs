@@ -112,6 +112,7 @@ pub fn shell(prefix: &str) {
                     "panic" => panic!("You called panic"),
                     "unreachable" => unreachable!(),
                     "quit" => break,
+                    "usemem" => use_memory(),
                     path => kprintln!("unknown command: {}", path)
                 }
             } // TODO execute command
@@ -177,4 +178,15 @@ fn atag(args: &StackVec<&str>) {
             kprintln!("{:#?}", atag);
         }
     }
+}
+
+fn use_memory() {
+    let mut base_string = String::from("hi again");
+    let mut string_vec = vec![base_string.clone()];
+    for _ in 0..1024 {
+        base_string.push_str(", and again");
+        let new_string = base_string.clone();
+        string_vec.push(new_string);
+    };
+    kprintln!("{:?}", string_vec);
 }

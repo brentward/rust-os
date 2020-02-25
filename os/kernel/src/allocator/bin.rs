@@ -71,25 +71,38 @@ impl Allocator {
     ///
     /// The effect of this that all lists between `index` and the next highest list
     /// with that is not empty will get 1 item and the list at `index` will get two.
-    fn populate_from_above(&mut self, index: usize) -> Option<(())> {
+    fn populate_from_above(&mut self, index: usize, layout: &Layout) -> Option<*mut usize> {
         if index < self.sized_block_count {
             if self.sized_blocks[index + 1].is_empty() {
-                match self.populate_from_above(index + 1) {
-                    Some(_) => (),
-                    None => return None,
-                }
-            }
-            match self.sized_blocks[index + 1].pop() {
-                Some(addr) => {
-                    unsafe {
-                        let (low_addr, high_addr) =  split_addr(addr, Allocator::size_of_block(index));
-                        self.sized_blocks[index].push(low_addr);
-                        self.sized_blocks[index].push(high_addr);
+                match self.populate_from_above(index + 1, layout) {
+                    Some(addr) => {
+                        match self.sized_blocks[index + 1].pop() {
+                            Some(addr) => {
+                                let (low, high) = unsafe {
+                                    split_addr(addr, Allocator::size_of_block(index))
+                                };
+                                let low_align = align_up(low as usize, layout.align());
+                                let high_align = align_up(high as usize, layout.align());
+                                let closest = if low_align - low as usize <= high_align - high as usize {
+                                    unsafe {
+                                        self.sized_blocks[index].push(high);
+                                        low
+                                    }
+                                } else {
+                                    unsafe {
+                                        self.sized_blocks[index].push(low);
+                                        high
+                                    }
+                                };
+                                return Some(closest);
+                            }
+                            None => { return None; }
+                        }
                     }
-                    Some(())
+                    None => { return None; }
                 }
-                None => None,
             }
+            None
         } else {
             None
         }
@@ -123,24 +136,25 @@ impl Allocator {
                 return Ok(node.pop() as *mut u8)
             }
         }
-        match self.populate_from_above(index) {
-            Some(_) => {
-                match self.sized_blocks[index].pop() {
-                    Some(addr) => Ok(addr as *mut u8),
-                    None => panic!("populate from above is not working correctly"),
+        let aligned_addr = align_up(self.current, Allocator::size_of_block(index));
+        match self.populate_from_above(index, &layout) {
+            Some(addr) => {
+                if has_alignment(addr as usize, layout.align()) {
+                    Ok(addr as *mut u8)
+                } else {
+                    Err(AllocErr::Exhausted { request: layout })
                 }
+                // match self.sized_blocks[index].pop() {
+                //     Some(addr) => Ok(addr as *mut u8),
+                //     None => panic!("populate from above is not working correctly"),
+                // }
             },
             None => {
-                let aligned_addr = align_up(
-                    self.current,
-                    Allocator::size_of_block(index)
-                );
                 if aligned_addr + Allocator::size_of_block(index) > self.end {
                     Err(AllocErr::Exhausted { request: layout })
                 } else {
                     self.current = aligned_addr + Allocator::size_of_block(index);
                     Ok(aligned_addr as *mut u8)
-
                 }
             }
         }

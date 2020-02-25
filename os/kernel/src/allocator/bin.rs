@@ -8,6 +8,7 @@ const BLOCK_SIZE_COUNT: usize = mem::size_of::<usize>() * 8 - 3;
 
 /// A simple allocator that allocates based on size classes.
 pub struct Allocator {
+    wasted: usize,
     total_mem: usize,
     max_block_size: usize,
     sized_block_count: usize,
@@ -19,34 +20,41 @@ impl Allocator {
     /// Creates a new bin allocator that will allocate memory from the region
     /// starting at address `start` and ending at address `end`.
     pub fn new(start: usize, end: usize) -> Allocator {
-        let total_mem = end - start;
+        let current = start;
+        let total_mem = end - current;
         let max_block_size = 1 << (mem::size_of::<usize>() * 8 - total_mem.leading_zeros() as usize - 1);
         let sized_block_count = (max_block_size as u64).trailing_zeros() as usize - 2;
-        // let starting_address = align_up(start, max_power_of_two);
-        // let (max_block_size, sized_block_count, starting_address) = if end - starting_address >= max_power_of_two {
-        //     (max_power_of_two, sized_block_count, starting_address)
-        // } else {
-        //     let sized_block_count = sized_block_count - 1;
-        //     let max_block_size = Allocator::size_of_block(sized_block_count - 1);
-        //     let starting_address = align_up(start, max_block_size);
-        //     (max_block_size, sized_block_count, starting_address)
-        // };
+        let current = align_up(current, max_block_size);
+        let wasted = current - start;
+        let (max_block_size, sized_block_count, current) = if end - current >= max_block_size {
+            (max_block_size, sized_block_count, current)
+        } else {
+            let sized_block_count = sized_block_count - 1;
+            let max_block_size = Allocator::size_of_block(sized_block_count - 1);
+            let current = align_up(start, max_block_size);
+            (max_block_size, sized_block_count, current)
+        };
         let mut sized_blocks = [LinkedList::new(); BLOCK_SIZE_COUNT];
-        // let current = starting_address + max_block_size;
-        // unsafe { sized_blocks[sized_block_count - 1].push(starting_address as *mut usize) };
+        unsafe { sized_blocks[sized_block_count - 1].push(current as *mut usize) };
+        let current = current + max_block_size;
 
-        Allocator {
+        let mut allocator = Allocator {
+            wasted,
             total_mem,
             max_block_size,
             sized_block_count,
-            current: start,
+            current,
             end,
             sized_blocks,
+        };
+        let layout = &Layout::from_size_align(2usize, 8).unwrap();
+        match allocator.populate_from_above(0, layout) {
+            Some(addr) => {
+                unsafe { allocator.sized_blocks[0].push(addr) };
+                allocator
+            },
+            None => panic!("Nothing was returned from populate from above"),
         }
-        // match allocator.populate_from_above(0) {
-        //     Some(_) => allocator,
-        //     None => panic!("Nothing was returned from populate from above"),
-        // }
     }
 
     fn size_of_block(index: usize) -> usize {
@@ -63,46 +71,64 @@ impl Allocator {
         panic!("layout will cause memory address overflow");
     }
 
-    /// Traverses up the size_blocks array from the `index` location and checks
-    /// recursively for unallocated  blocks. If it finds any blocks that are larger
-    /// than the requested size it pop them from the list, split them into the next
-    /// lowest block size and them push them into the corresponding size_block list
-    /// down tohe list at the `index` location.
+    /// Pops an item from the list containing block sises one larger than
+    /// `index`, splits it in half and checks for the half closest alignment
+    /// to the `layout` and returns it as `Some(*mut usize)` while pushing the other
+    /// into the list at `index`. If none are above it will search up the
+    /// list recursively. `None` will be returned if none of the lists have members.
     ///
     /// The effect of this that all lists between `index` and the next highest list
-    /// with that is not empty will get 1 item and the list at `index` will get two.
+    /// with that is not empty will get 1 item if `Some` is returned and no change
+    /// if `None is returned.
     fn populate_from_above(&mut self, index: usize, layout: &Layout) -> Option<*mut usize> {
         if index < self.sized_block_count {
             if self.sized_blocks[index + 1].is_empty() {
                 match self.populate_from_above(index + 1, layout) {
                     Some(addr) => {
-                        match self.sized_blocks[index + 1].pop() {
-                            Some(addr) => {
-                                let (low, high) = unsafe {
-                                    split_addr(addr, Allocator::size_of_block(index))
-                                };
-                                let low_align = align_up(low as usize, layout.align());
-                                let high_align = align_up(high as usize, layout.align());
-                                let closest = if low_align - low as usize <= high_align - high as usize {
-                                    unsafe {
-                                        self.sized_blocks[index].push(high);
-                                        low
-                                    }
-                                } else {
-                                    unsafe {
-                                        self.sized_blocks[index].push(low);
-                                        high
-                                    }
-                                };
-                                return Some(closest);
+                        let (low, high) = unsafe {
+                            split_addr(addr, Allocator::size_of_block(index))
+                        };
+                        let low_align = align_up(low as usize, layout.align());
+                        let high_align = align_up(high as usize, layout.align());
+                        let closest = if low_align - low as usize <= high_align - high as usize {
+                            unsafe {
+                                self.sized_blocks[index].push(high);
+                                low
                             }
-                            None => { return None; }
-                        }
+                        } else {
+                            unsafe {
+                                self.sized_blocks[index].push(low);
+                                high
+                            }
+                        };
+                        Some(closest)
                     }
-                    None => { return None; }
+                    None => None
+                }
+            } else {
+                match self.sized_blocks[index + 1].pop() {
+                    Some(addr) => {
+                        let (low, high) = unsafe {
+                            split_addr(addr, Allocator::size_of_block(index))
+                        };
+                        let low_align = align_up(low as usize, layout.align());
+                        let high_align = align_up(high as usize, layout.align());
+                        let closest = if low_align - low as usize <= high_align - high as usize {
+                            unsafe {
+                                self.sized_blocks[index].push(high);
+                                low
+                            }
+                        } else {
+                            unsafe {
+                                self.sized_blocks[index].push(low);
+                                high
+                            }
+                        };
+                        Some(closest)
+                    }
+                    None => None
                 }
             }
-            None
         } else {
             None
         }
@@ -144,10 +170,6 @@ impl Allocator {
                 } else {
                     Err(AllocErr::Exhausted { request: layout })
                 }
-                // match self.sized_blocks[index].pop() {
-                //     Some(addr) => Ok(addr as *mut u8),
-                //     None => panic!("populate from above is not working correctly"),
-                // }
             },
             None => {
                 if aligned_addr + Allocator::size_of_block(index) > self.end {
@@ -184,6 +206,7 @@ impl Allocator {
 impl fmt::Debug for Allocator {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         writeln!(f, "Allocator {{")?;
+        writeln!(f, "  wasted: {}", self.wasted)?;
         writeln!(f, "  current: {}", self.current)?;
         writeln!(f, "  end: {}", self.end)?;
         writeln!(f, "  total mem: {}", self.total_mem)?;

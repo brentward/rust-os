@@ -188,5 +188,4 @@ fn use_memory() {
         let new_string = base_string.clone();
         string_vec.push(new_string);
     };
-    kprintln!("{:?}", string_vec);
 }

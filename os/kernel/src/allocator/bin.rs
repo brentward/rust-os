@@ -22,14 +22,31 @@ impl Allocator {
         let total_mem = end - start;
         let max_block_size = 1 << (mem::size_of::<usize>() * 8 - total_mem.leading_zeros() as usize - 1);
         let sized_block_count = (max_block_size as u64).trailing_zeros() as usize - 2;
+        // let starting_address = align_up(start, max_power_of_two);
+        // let (max_block_size, sized_block_count, starting_address) = if end - starting_address >= max_power_of_two {
+        //     (max_power_of_two, sized_block_count, starting_address)
+        // } else {
+        //     let sized_block_count = sized_block_count - 1;
+        //     let max_block_size = Allocator::size_of_block(sized_block_count - 1);
+        //     let starting_address = align_up(start, max_block_size);
+        //     (max_block_size, sized_block_count, starting_address)
+        // };
+        let mut sized_blocks = [LinkedList::new(); BLOCK_SIZE_COUNT];
+        // let current = starting_address + max_block_size;
+        // unsafe { sized_blocks[sized_block_count - 1].push(starting_address as *mut usize) };
+
         Allocator {
             total_mem,
             max_block_size,
             sized_block_count,
             current: start,
             end,
-            sized_blocks: [LinkedList::new(); BLOCK_SIZE_COUNT],
+            sized_blocks,
         }
+        // match allocator.populate_from_above(0) {
+        //     Some(_) => allocator,
+        //     None => panic!("Nothing was returned from populate from above"),
+        // }
     }
 
     fn size_of_block(index: usize) -> usize {
@@ -43,54 +60,40 @@ impl Allocator {
                 return index
             }
         }
-        self.sized_blocks.len() - 1
-        // self.block_sizes.iter().position(| &size | size >= required_size)
+        panic!("layout will cause memory address overflow");
     }
 
-    // fn pop_from_above(&mut self, index: usize) -> Option<*mut usize> {
-    //     if (index + 2) <= self.sized_blocks.len() {
-    //         if !self.sized_blocks[index + 1].is_empty() {
-    //             return self.sized_blocks[index + 1].pop()
-    //         }
-    //     }
-    //     None
-    // }
-    //
-    // fn split_addr(addr: *mut usize, size: usize) -> (*mut usize, *mut usize) {
-    //     let new_addr = unsafe { *addr as usize  + size };
-    //     let new_ptr = new_addr as *mut usize;
-    //     (addr, new_ptr)
-    // }
-    //
-    // fn push_from_above(&mut self, index: usize, low_item: *mut usize, high_item: *mut usize)  {
-    //     unsafe {
-    //         self.sized_blocks[index].push(low_item);
-    //         self.sized_blocks[index].push(high_item);
-    //     }
-    // }
-    //
-    // fn populate_from_above(&mut self, index: usize) -> Option<()> {
-    //     if self.sized_blocks.len() <= index {
-    //         return None
-    //     }
-    //     while self.sized_blocks[index].is_empty() {
-    //         match self.populate_from_above(index + 1) {
-    //             Some(_) => (),
-    //             None => return None,
-    //         }
-    //     }
-    //     match self.pop_from_above(index) {
-    //         Some(addr) => {
-    //             let (low_addr, high_addr) = Allocator::split_addr(
-    //                 addr,
-    //                 Allocator::size_of_block(index)
-    //             );
-    //             self.push_from_above(index, low_addr, high_addr);
-    //             Some(())
-    //         }
-    //         None => None,
-    //     }
-    // }
+    /// Traverses up the size_blocks array from the `index` location and checks
+    /// recursively for unallocated  blocks. If it finds any blocks that are larger
+    /// than the requested size it pop them from the list, split them into the next
+    /// lowest block size and them push them into the corresponding size_block list
+    /// down tohe list at the `index` location.
+    ///
+    /// The effect of this that all lists between `index` and the next highest list
+    /// with that is not empty will get 1 item and the list at `index` will get two.
+    fn populate_from_above(&mut self, index: usize) -> Option<(())> {
+        if index < self.sized_block_count {
+            if self.sized_blocks[index + 1].is_empty() {
+                match self.populate_from_above(index + 1) {
+                    Some(_) => (),
+                    None => return None,
+                }
+            }
+            match self.sized_blocks[index + 1].pop() {
+                Some(addr) => {
+                    unsafe {
+                        let (low_addr, high_addr) =  split_addr(addr, Allocator::size_of_block(index));
+                        self.sized_blocks[index].push(low_addr);
+                        self.sized_blocks[index].push(high_addr);
+                    }
+                    Some(())
+                }
+                None => None,
+            }
+        } else {
+            None
+        }
+    }
 
 
     /// Allocates memory. Returns a pointer meeting the size and alignment
@@ -115,48 +118,32 @@ impl Allocator {
     /// size or alignment constraints (`AllocError::Unsupported`).
     pub fn alloc(&mut self, layout: Layout) -> Result<*mut u8, AllocErr> {
         let index =  self.size_list_index_for_layout(&layout);
-        for addr in self.sized_blocks[index].iter_mut() {
-            if has_allignment(addr.value() as usize, layout.align()) {
-                return Ok(addr.pop() as *mut u8)
+        for node in self.sized_blocks[index].iter_mut() {
+            if has_alignment(node.value() as usize, layout.align()) {
+                return Ok(node.pop() as *mut u8)
             }
         }
+        match self.populate_from_above(index) {
+            Some(_) => {
+                match self.sized_blocks[index].pop() {
+                    Some(addr) => Ok(addr as *mut u8),
+                    None => panic!("populate from above is not working correctly"),
+                }
+            },
+            None => {
+                let aligned_addr = align_up(
+                    self.current,
+                    Allocator::size_of_block(index)
+                );
+                if aligned_addr + Allocator::size_of_block(index) > self.end {
+                    Err(AllocErr::Exhausted { request: layout })
+                } else {
+                    self.current = aligned_addr + Allocator::size_of_block(index);
+                    Ok(aligned_addr as *mut u8)
 
-        let aligned_addr = align_up(
-            self.current,
-            Allocator::size_of_block(index)
-        );
-        if aligned_addr + Allocator::size_of_block(index) > self.end {
-            Err(AllocErr::Exhausted { request: layout })
-        } else {
-            self.current = aligned_addr + Allocator::size_of_block(index);
-            Ok(aligned_addr as *mut u8)
+                }
+            }
         }
-        //
-        // match self.sized_blocks[index].pop() {
-        //     Some(addr) => Ok(addr as *mut u8),
-        //     None => {
-        //         match self.populate_from_above(index) {
-        //             Some(_) => {
-        //                 match self.sized_blocks[index].pop() {
-        //                     Some(addr) => Ok(addr as *mut u8),
-        //                     None => panic!("item in list should be guarenteed")
-        //                 }
-        //             },
-        //             None => {
-        //                 let aligned_addr = align_up(
-        //                     self.current,
-        //                     Allocator::size_of_block(index)
-        //                 );
-        //                 if aligned_addr + Allocator::size_of_block(index) > self.end {
-        //                     Err(AllocErr::Exhausted { request: layout })
-        //                 } else {
-        //                     self.current = aligned_addr + Allocator::size_of_block(index);
-        //                     Ok(aligned_addr as *mut u8)
-        //                 }
-        //             }
-        //         }
-        //     }
-        // }
     }
 
     /// Deallocates the memory referenced by `ptr`.
